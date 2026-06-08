@@ -20,6 +20,7 @@ package org.apache.fluss.server.coordinator;
 import org.apache.fluss.config.ConfigOptions;
 import org.apache.fluss.config.Configuration;
 import org.apache.fluss.config.cluster.AlterConfigOpType;
+import org.apache.fluss.exception.InvalidAlterTableException;
 import org.apache.fluss.exception.TableAlreadyExistException;
 import org.apache.fluss.metadata.DataLakeFormat;
 import org.apache.fluss.metadata.Schema;
@@ -236,6 +237,84 @@ class LakeTableManagerITCase {
         // cleanup
         adminGateway.dropTable(newDropTableRequest(db1, tb1, false)).get();
         adminGateway.dropDatabase(newDropDatabaseRequest(db1, false, true)).get();
+    }
+
+    @Test
+    void testAlterLakePathOptionsValidation() throws Exception {
+        AdminReadOnlyGateway gateway = getAdminOnlyGateway(true);
+        AdminGateway adminGateway = getAdminGateway();
+
+        String db = "test_alter_lake_path_options_db";
+        adminGateway.createDatabase(newCreateDatabaseRequest(db, false)).get();
+        try {
+            TablePath lakeDisabledTablePath = TablePath.of(db, "lake_path_disabled");
+            Map<String, String> disabledProperties = new HashMap<>();
+            disabledProperties.put(ConfigOptions.TABLE_DATALAKE_ENABLED.key(), "false");
+            disabledProperties.put(ConfigOptions.TABLE_DATALAKE_DATABASE_NAME.key(), "lake_db");
+            adminGateway
+                    .createTable(
+                            newCreateTableRequest(
+                                    lakeDisabledTablePath,
+                                    newPkTable().withProperties(disabledProperties),
+                                    false))
+                    .get();
+
+            Map<String, String> alterDisabledProperties = new HashMap<>();
+            alterDisabledProperties.put(
+                    ConfigOptions.TABLE_DATALAKE_TABLE_NAME.key(), "lake_table");
+            adminGateway
+                    .alterTable(
+                            newAlterTableRequest(
+                                    lakeDisabledTablePath,
+                                    alterDisabledProperties,
+                                    Collections.emptyList(),
+                                    Collections.emptyList(),
+                                    false))
+                    .get();
+
+            TableDescriptor disabledTable =
+                    TableDescriptor.fromJsonBytes(
+                            gateway.getTableInfo(newGetTableInfoRequest(lakeDisabledTablePath))
+                                    .get()
+                                    .getTableJson());
+            assertThat(disabledTable.getProperties())
+                    .containsEntry(ConfigOptions.TABLE_DATALAKE_TABLE_NAME.key(), "lake_table");
+
+            TablePath lakeEnabledTablePath = TablePath.of(db, "lake_path_enabled");
+            Map<String, String> enabledProperties = new HashMap<>();
+            enabledProperties.put(ConfigOptions.TABLE_DATALAKE_ENABLED.key(), "true");
+            enabledProperties.put(ConfigOptions.TABLE_DATALAKE_DATABASE_NAME.key(), "lake_db");
+            enabledProperties.put(ConfigOptions.TABLE_DATALAKE_TABLE_NAME.key(), "lake_table");
+            adminGateway
+                    .createTable(
+                            newCreateTableRequest(
+                                    lakeEnabledTablePath,
+                                    newPkTable().withProperties(enabledProperties),
+                                    false))
+                    .get();
+
+            assertThatThrownBy(
+                            () ->
+                                    adminGateway
+                                            .alterTable(
+                                                    newAlterTableRequest(
+                                                            lakeEnabledTablePath,
+                                                            Collections.singletonMap(
+                                                                    ConfigOptions
+                                                                            .TABLE_DATALAKE_TABLE_NAME
+                                                                            .key(),
+                                                                    "another_lake_table"),
+                                                            Collections.emptyList(),
+                                                            Collections.emptyList(),
+                                                            false))
+                                            .get())
+                    .cause()
+                    .isInstanceOf(InvalidAlterTableException.class)
+                    .hasMessageContaining("cannot be altered for datalake enabled tables")
+                    .hasMessageContaining(ConfigOptions.TABLE_DATALAKE_TABLE_NAME.key());
+        } finally {
+            adminGateway.dropDatabase(newDropDatabaseRequest(db, true, true)).get();
+        }
     }
 
     @Test

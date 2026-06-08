@@ -47,7 +47,7 @@ public class LakeSourceUtils {
     @SuppressWarnings("unchecked")
     @Nullable
     public static LakeSource<LakeSplit> createLakeSource(
-            TablePath tablePath, Map<String, String> properties) {
+            TablePath lakeTablePath, Map<String, String> properties) {
         Map<String, String> catalogProperties =
                 DataLakeUtils.extractLakeCatalogProperties(Configuration.fromMap(properties));
         Configuration lakeConfig = Configuration.fromMap(catalogProperties);
@@ -68,7 +68,7 @@ public class LakeSourceUtils {
         }
         LakeStorage lakeStorage = checkNotNull(lakeStoragePlugin).createLakeStorage(lakeConfig);
         try {
-            return (LakeSource<LakeSplit>) lakeStorage.createLakeSource(tablePath);
+            return (LakeSource<LakeSplit>) lakeStorage.createLakeSource(lakeTablePath);
         } catch (UnsupportedOperationException e) {
             throw new UnsupportedOperationException(
                     String.format(

@@ -388,9 +388,10 @@ public class FlinkCatalog extends AbstractCatalog {
                                             objectPath.getDatabaseName(),
                                             tableName.split("\\" + LAKE_TABLE_SPLITTER)[0])));
                 }
+                TablePath lakeTablePath = tableInfo.getLakeTablePath();
 
                 return getLakeTable(
-                        objectPath.getDatabaseName(),
+                        lakeTablePath,
                         tableName,
                         tableInfo.getProperties(),
                         getLakeCatalogProperties());
@@ -439,23 +440,28 @@ public class FlinkCatalog extends AbstractCatalog {
     }
 
     protected CatalogBaseTable getLakeTable(
-            String databaseName,
-            String tableName,
+            TablePath lakeTablePath,
+            String requestedTableName,
             Configuration properties,
             Map<String, String> lakeCatalogProperties)
             throws TableNotExistException, CatalogException {
-        String[] tableComponents = tableName.split("\\" + LAKE_TABLE_SPLITTER);
-        if (tableComponents.length == 1) {
-            // should be pattern like table_name$lake
-            tableName = tableComponents[0];
-        } else {
-            // pattern is table_name$lake$snapshots
-            // Need to reconstruct: table_name + $snapshots
-            tableName = String.join("", tableComponents);
+        String lakeObjectName =
+                toLakeCatalogObjectName(lakeTablePath.getTableName(), requestedTableName);
+        CatalogBaseTable lakeTable =
+                lakeFlinkCatalog
+                        .getLakeCatalog(properties, lakeCatalogProperties)
+                        .getTable(new ObjectPath(lakeTablePath.getDatabaseName(), lakeObjectName));
+        return lakeTable;
+    }
+
+    private String toLakeCatalogObjectName(String lakeTableName, String requestedTableName) {
+        int splitterIndex = requestedTableName.indexOf(LAKE_TABLE_SPLITTER);
+        if (splitterIndex < 0) {
+            return requestedTableName;
         }
-        return lakeFlinkCatalog
-                .getLakeCatalog(properties, lakeCatalogProperties)
-                .getTable(new ObjectPath(databaseName, tableName));
+        // e.g. "fluss_table$lake$snapshots" should read "lake_table$snapshots".
+        return lakeTableName
+                + requestedTableName.substring(splitterIndex + LAKE_TABLE_SPLITTER.length());
     }
 
     @Override

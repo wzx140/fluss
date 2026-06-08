@@ -37,6 +37,7 @@ import org.apache.fluss.lake.source.LakeSource;
 import org.apache.fluss.lake.source.LakeSplit;
 import org.apache.fluss.metadata.ChangelogImage;
 import org.apache.fluss.metadata.DeleteBehavior;
+import org.apache.fluss.metadata.LakeTableUtil;
 import org.apache.fluss.metadata.MergeEngineType;
 import org.apache.fluss.metadata.TablePath;
 import org.apache.fluss.predicate.CompoundPredicate;
@@ -253,13 +254,15 @@ public class FlinkTableSource
         this.leaseContext = leaseContext;
         this.mergeEngineType = mergeEngineType;
         this.tableOptions = tableOptions;
+        this.tableConfig = checkNotNull(tableConfig, "tableConfig must not be null");
         if (isDataLakeEnabled) {
             this.lakeSource =
                     checkNotNull(
-                            createLakeSource(tablePath, tableOptions),
+                            createLakeSource(
+                                    LakeTableUtil.getLakeTablePath(tablePath, tableOptions),
+                                    tableOptions),
                             "LakeSource must not be null if enable datalake");
         }
-        this.tableConfig = checkNotNull(tableConfig, "tableConfig must not be null");
 
         // Pre-compute available statistics columns to avoid repeated calculation
         RowType flussRowType = FlinkConversions.toFlussRowType(tableOutputType);

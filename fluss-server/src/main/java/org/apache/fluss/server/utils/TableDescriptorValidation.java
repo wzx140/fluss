@@ -31,6 +31,7 @@ import org.apache.fluss.metadata.ChangelogImage;
 import org.apache.fluss.metadata.DataLakeFormat;
 import org.apache.fluss.metadata.DeleteBehavior;
 import org.apache.fluss.metadata.KvFormat;
+import org.apache.fluss.metadata.LakeTableUtil;
 import org.apache.fluss.metadata.LogFormat;
 import org.apache.fluss.metadata.MergeEngineType;
 import org.apache.fluss.metadata.Schema;
@@ -127,6 +128,7 @@ public class TableDescriptorValidation {
         checkSystemColumns(schema.getRowType());
         validateStatisticsConfig(tableDescriptor);
         checkTableLakeFormatMatchesCluster(tableConf, clusterDataLakeFormat);
+        checkCustomLakePathSupported(tableConf, clusterDataLakeFormat);
     }
 
     private static void checkTableLakeFormatMatchesCluster(
@@ -150,6 +152,25 @@ public class TableDescriptorValidation {
                             ConfigOptions.DATALAKE_FORMAT.key(),
                             clusterDataLakeFormat,
                             ConfigOptions.TABLE_DATALAKE_ENABLED.key()));
+        }
+    }
+
+    private static void checkCustomLakePathSupported(
+            Configuration tableConf, @Nullable DataLakeFormat clusterDataLakeFormat) {
+        if (!LakeTableUtil.hasCustomLakePath(tableConf)) {
+            return;
+        }
+        if (!tableConf.get(ConfigOptions.TABLE_DATALAKE_ENABLED)) {
+            return;
+        }
+
+        DataLakeFormat dataLakeFormat =
+                tableConf
+                        .getOptional(ConfigOptions.TABLE_DATALAKE_FORMAT)
+                        .orElse(clusterDataLakeFormat);
+        if (dataLakeFormat != DataLakeFormat.PAIMON) {
+            throw new InvalidConfigException(
+                    "Custom lake table path is only supported for Paimon.");
         }
     }
 
@@ -179,10 +200,24 @@ public class TableDescriptorValidation {
                             ConfigOptions.TABLE_KV_STANDBY_REPLICA_ENABLED.key()));
         }
 
+        List<String> lakePathKeys =
+                tableKeysToChange.stream()
+                        .filter(TableDescriptorValidation::isLakePathOption)
+                        .collect(Collectors.toList());
+        if (currentConfig.isDataLakeEnabled() && !lakePathKeys.isEmpty()) {
+            throw new InvalidAlterTableException(
+                    String.format(
+                            "The following options cannot be altered for datalake enabled tables: %s.",
+                            lakePathKeys.stream()
+                                    .map(k -> "'" + k + "'")
+                                    .collect(Collectors.joining(", "))));
+        }
+
         if (!currentConfig.getDataLakeFormat().isPresent()) {
             List<String> datalakeKeys =
                     tableKeysToChange.stream()
                             .filter(k -> k.startsWith("table.datalake."))
+                            .filter(k -> currentConfig.isDataLakeEnabled() || !isLakePathOption(k))
                             .collect(Collectors.toList());
             if (!datalakeKeys.isEmpty()) {
                 // Allow log tables without bucket keys to enable datalake even when
@@ -210,6 +245,11 @@ public class TableDescriptorValidation {
                                         .collect(Collectors.joining(", "))));
             }
         }
+    }
+
+    private static boolean isLakePathOption(String key) {
+        return ConfigOptions.TABLE_DATALAKE_DATABASE_NAME.key().equals(key)
+                || ConfigOptions.TABLE_DATALAKE_TABLE_NAME.key().equals(key);
     }
 
     private static void checkSystemColumns(RowType schema) {
