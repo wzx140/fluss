@@ -92,6 +92,7 @@ public class MetricNames {
             "delayedFetchFromFollowerExpiresPerSecond";
     public static final String DELAYED_FETCH_FROM_CLIENT_EXPIRES_RATE =
             "delayedFetchFromClientExpiresPerSecond";
+    public static final String HISTORICAL_INFLIGHT_REQUESTS = "inflightRequests";
 
     public static final String SERVER_LOGICAL_STORAGE_LOG_SIZE = "logSize";
     public static final String SERVER_LOGICAL_STORAGE_KV_SIZE = "kvSize";
@@ -101,6 +102,12 @@ public class MetricNames {
     // for tablet server data disk write protection
     public static final String DISK_USAGE_RATIO = "diskUsageRatio";
     public static final String DISK_WRITE_LOCKED = "diskWriteLocked";
+
+    // for historical lookup cache
+    public static final String HISTORICAL_LOOKUP_CACHE_DISK_SIZE = "lookupCacheDiskSize";
+    public static final String HISTORICAL_LOOKUP_CACHE_TABLE_COUNT = "lookupCacheTableCount";
+    public static final String HISTORICAL_LOOKUP_CACHE_CAPACITY_EVICTIONS =
+            "lookupCacheCapacityEvictions";
 
     // --------------------------------------------------------------------------------------------
     // metrics for user
@@ -130,6 +137,8 @@ public class MetricNames {
 
     public static final String TOTAL_LOOKUP_REQUESTS_RATE = "totalLookupRequestsPerSecond";
     public static final String FAILED_LOOKUP_REQUESTS_RATE = "failedLookupRequestsPerSecond";
+    public static final String LAKE_LOOKUPS_RATE = "lakeLookupsPerSecond";
+    public static final String LAKE_LOOKUP_TIME_MS = "lakeLookupTimeMs";
     public static final String TOTAL_PUT_KV_REQUESTS_RATE = "totalPutKvRequestsPerSecond";
     public static final String FAILED_PUT_KV_REQUESTS_RATE = "failedPutKvRequestsPerSecond";
     public static final String TOTAL_LIMIT_SCAN_REQUESTS_RATE = "totalLimitScanRequestsPerSecond";
@@ -185,6 +194,22 @@ public class MetricNames {
     public static final String ROCKSDB_COMPACTION_TIME_MICROS_MAX =
             "rocksdbCompactionTimeMicrosMax";
 
+    // --------------------------------------------------------------------------------------------
+    // KV backpressure metrics (table-level)
+    // --------------------------------------------------------------------------------------------
+    /**
+     * Maximum normalized backpressure value across all buckets of this table, in {@code [0, 1]}.
+     * Reflects how close the hottest bucket is to the storage engine's hard-rejection trigger.
+     */
+    public static final String KV_BACKPRESSURE_MAX_PRESSURE = "kvBackpressureMaxPressure";
+
+    /**
+     * Total number of write requests rejected with {@code StorageBackpressureException} on this
+     * table since process start. The rate of this counter reflects how often the storage engine
+     * crosses its hard-rejection trigger.
+     */
+    public static final String KV_BACKPRESSURE_REJECTIONS_TOTAL = "kvBackpressureRejectionsTotal";
+
     // Table-level RocksDB metrics (aggregated from all buckets of a table, Sum aggregation)
     /** Total bytes read across all buckets of this table (Sum aggregation). */
     public static final String ROCKSDB_BYTES_READ_TOTAL = "rocksdbBytesReadTotal";
@@ -206,6 +231,17 @@ public class MetricNames {
     // Server-level RocksDB metrics (aggregated from all tables, Sum aggregation)
     /** Total memory usage across all RocksDB instances in this server (Sum aggregation). */
     public static final String ROCKSDB_MEMORY_USAGE_TOTAL = "rocksdbMemoryUsageTotal";
+
+    /** Memory usage of the shared RocksDB block cache in this server. */
+    public static final String ROCKSDB_SHARED_BLOCK_CACHE_USAGE = "rocksdbSharedBlockCacheUsage";
+
+    /** Configured capacity of the shared RocksDB block cache in this server. */
+    public static final String ROCKSDB_SHARED_BLOCK_CACHE_CAPACITY =
+            "rocksdbSharedBlockCacheCapacity";
+
+    /** Pinned memory usage of the shared RocksDB block cache in this server. */
+    public static final String ROCKSDB_SHARED_BLOCK_CACHE_PINNED_USAGE =
+            "rocksdbSharedBlockCachePinnedUsage";
 
     // Table-level RocksDB memory metrics (Sum aggregation)
     /** Total memtable memory usage across all buckets of this table. */
@@ -242,6 +278,9 @@ public class MetricNames {
     public static final String LOG_END_OFFSET = "endOffset";
     public static final String REMOTE_LOG_SIZE = "size";
     public static final String LOG_LAKE_TIMESTAMP_LAG = "timestampLag";
+
+    // for physical storage
+    public static final String BUCKET_PHYSICAL_STORAGE_LOCAL_LOG_SIZE = "localLogSize";
 
     // for logic storage
     public static final String LOCAL_STORAGE_LOG_SIZE = "logSize";

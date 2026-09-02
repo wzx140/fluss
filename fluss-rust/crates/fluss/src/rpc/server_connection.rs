@@ -207,6 +207,10 @@ impl RpcClient {
         self
     }
 
+    pub(crate) fn disconnect(&self, server_uid: &str) {
+        self.connections.write().remove(server_uid);
+    }
+
     pub(crate) async fn get_connection(
         &self,
         server_node: &ServerNode,
@@ -1182,11 +1186,11 @@ mod tests {
 
         assert_eq!(
             resolve_api_version_for(None, ApiKey::PutKv).unwrap(),
-            ApiVersion(1)
+            ApiVersion(3)
         );
 
         let server_versions = vec![
-            // PutKv: server v0..v3, client v0 only (v1 key encoding not yet implemented) → negotiated v0
+            // PutKv: server v0..v3, client v0..v3 → negotiated v3
             PbApiVersion {
                 api_key: 1016,
                 min_version: 0,
@@ -1216,7 +1220,19 @@ mod tests {
         // Successful negotiation cases
         assert_eq!(
             negotiated.highest_available_version(ApiKey::PutKv).unwrap(),
-            ApiVersion(1)
+            ApiVersion(3)
+        );
+
+        let old_server_versions = ServerApiVersions::new(&[PbApiVersion {
+            api_key: 1016,
+            min_version: 0,
+            max_version: 2,
+        }]);
+        assert_eq!(
+            old_server_versions
+                .highest_available_version(ApiKey::PutKv)
+                .unwrap(),
+            ApiVersion(2)
         );
         assert_eq!(
             negotiated

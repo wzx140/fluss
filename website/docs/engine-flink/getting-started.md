@@ -15,6 +15,7 @@ Apache Fluss publishes the following JARs to Maven Central:
 
 | Artifact | Jar |
 |----------|-----|
+| Fluss connector for Flink 2.3 | [fluss-flink-2.3-$FLUSS_VERSION$.jar]($FLUSS_MAVEN_REPO_URL$/org/apache/fluss/fluss-flink-2.3/$FLUSS_VERSION$/fluss-flink-2.3-$FLUSS_VERSION$.jar) |
 | Fluss connector for Flink 2.2 | [fluss-flink-2.2-$FLUSS_VERSION$.jar]($FLUSS_MAVEN_REPO_URL$/org/apache/fluss/fluss-flink-2.2/$FLUSS_VERSION$/fluss-flink-2.2-$FLUSS_VERSION$.jar) |
 | Fluss connector for Flink 1.20 | [fluss-flink-1.20-$FLUSS_VERSION$.jar]($FLUSS_MAVEN_REPO_URL$/org/apache/fluss/fluss-flink-1.20/$FLUSS_VERSION$/fluss-flink-1.20-$FLUSS_VERSION$.jar) |
 | Fluss connector for Flink 1.19 | [fluss-flink-1.19-$FLUSS_VERSION$.jar]($FLUSS_MAVEN_REPO_URL$/org/apache/fluss/fluss-flink-1.19/$FLUSS_VERSION$/fluss-flink-1.19-$FLUSS_VERSION$.jar) |
@@ -30,13 +31,13 @@ Maven coordinates (example for Flink 1.20):
 </dependency>
 ```
 
-Verify downloaded JARs against the [KEYS file](https://downloads.apache.org/incubator/fluss/KEYS) using the [verification instructions](/downloads#verifying-downloads).
+Verify downloaded JARs using the [verification instructions](/downloads#verifying-downloads).
 
 
 ## Supported Flink Versions
 | Fluss Connector Versions | Supported Flink Versions |
 |--------------------------|--------------------------| 
-| $FLUSS_VERSION_SHORT$    | 1.18, 1.19, 1.20         |
+| $FLUSS_VERSION_SHORT$    | 1.18, 1.19, 1.20, 2.2, 2.3 |
 
 
 ## Feature Support

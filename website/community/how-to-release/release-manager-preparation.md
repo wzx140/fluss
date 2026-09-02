@@ -7,7 +7,7 @@ sidebar_position: 1
 
 It is important that the release manager is well prepared before initiating the release process. This page provides a checklist of tasks that should be completed in advance.
 
-We recommend that the release manager be a committer or a PPMC member, as they typically have the necessary permissions and in-depth understanding of the project. However, any contributor familiar with the Fluss project and who has the required access rights may serve as the release manager.
+We recommend that the release manager be a committer or a PMC member, as they typically have the necessary permissions and in-depth understanding of the project. However, any contributor familiar with the Fluss project and who has the required access rights may serve as the release manager.
 
 Note: The following setup is a one-time configuration required for release preparation.
 
@@ -135,10 +135,10 @@ sub   2048R/BA4D50BE 2016-02-23
 
 Here, the key ID is the 8-digit hex string in the pub line: 845E6689.
 
-Now, add your Apache GPG key to the Fluss’s KEYS file in the [release](https://dist.apache.org/repos/dist/release/incubator/fluss/KEYS) repository at [dist.apache.org](https://dist.apache.org). Follow the instructions listed at the top of these files. (Note: Only PPMC members have write access to the release repository. If you end up getting 403 errors ask on the mailing list for assistance.) PPMC member can refer following scripts to add your Apache GPG key to the KEYS in the release repository.
+Now, add your Apache GPG key to the Fluss’s KEYS file in the [release](https://dist.apache.org/repos/dist/release/fluss/KEYS) repository at [dist.apache.org](https://dist.apache.org). Follow the instructions listed at the top of these files. (Note: Only PMC members have write access to the release repository. If you end up getting 403 errors ask on the mailing list for assistance.) PMC member can refer following scripts to add your Apache GPG key to the KEYS in the release repository.
 
 ```
-svn co https://dist.apache.org/repos/dist/release/incubator/fluss fluss-dist
+svn co https://dist.apache.org/repos/dist/release/fluss fluss-dist
 cd fluss-dist
 (gpg --list-sigs <YOUR_KEY_ID> && gpg --armor --export <YOUR_KEY_ID>) >> KEYS
 svn ci -m "[fluss] Add <YOUR_NAME>'s public key"
@@ -232,15 +232,21 @@ Publishing is automated by the `rust-release.yml` and `python-release.yml` workf
 
 Regenerating the Rust dependency/license list (an ASF requirement) needs the toolchain in `fluss-rust/rust-toolchain.toml`, [cargo-deny](https://embarkstudios.github.io/cargo-deny/), and Python 3.11+ (for `fluss-rust/scripts/dependencies.py`).
 
+## Docker Hub access
+
+Before the first Gateway release, file an ASF Infra request to create and
+authorize the `apache/fluss-gateway` Docker Hub repository. Confirm that the
+release manager can push to `apache/fluss`, `apache/fluss-gateway`, and
+`apache/fluss-quickstart-flink`; the Gateway image cannot be staged until the
+new repository exists.
+
 ## Further reading
 
 It's recommended but not mandatory to read following documents before making a release to know more details about apache release:
 
 - Release policy: https://www.apache.org/legal/release-policy.html
-- Incubator release: http://incubator.apache.org/guides/releasemanagement.html
 - TLP release: https://infra.apache.org/release-distribution
 - Release sign: https://infra.apache.org/release-signing.html
 - Release publish: https://infra.apache.org/release-publishing.html
 - Release download pages: https://infra.apache.org/release-download-pages.html
 - Publishing maven artifacts: https://infra.apache.org/publishing-maven-artifacts.html
-

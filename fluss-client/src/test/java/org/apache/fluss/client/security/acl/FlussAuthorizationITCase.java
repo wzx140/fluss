@@ -152,6 +152,9 @@ public class FlussAuthorizationITCase {
                         DATA1_TABLE_PATH_PK.getDatabaseName(), DatabaseDescriptor.EMPTY, true)
                 .get();
         rootAdmin.createTable(DATA1_TABLE_PATH_PK, DATA1_TABLE_DESCRIPTOR_PK, true).get();
+        TableInfo tableInfo = rootAdmin.getTableInfo(DATA1_TABLE_PATH_PK).get();
+        FLUSS_CLUSTER_EXTENSION.waitUntilAllReplicaReady(
+                new TableBucket(tableInfo.getTableId(), 0));
     }
 
     @AfterEach
@@ -499,8 +502,6 @@ public class FlussAuthorizationITCase {
 
         GetKvSnapshotMetadataRequest request = new GetKvSnapshotMetadataRequest();
         request.setTableId(tableId).setBucketId(0).setSnapshotId(0);
-        // Make sure all tabletServer has ready replica and ready metadata for the table.
-        FLUSS_CLUSTER_EXTENSION.waitUntilAllReplicaReady(new TableBucket(tableId, 0));
 
         // call getKvSnapshotMetadata without authorization.
         assertNoTableDescribeAuth(() -> readOnlyGateway.getKvSnapshotMetadata(request).get());
@@ -925,7 +926,7 @@ public class FlussAuthorizationITCase {
         guestAdmin.addServerTag(Collections.singletonList(0), ServerTag.PERMANENT_OFFLINE).get();
 
         // recover server tag
-        guestAdmin.removeServerTag(Collections.singletonList(0), ServerTag.PERMANENT_OFFLINE);
+        guestAdmin.removeServerTag(Collections.singletonList(0), ServerTag.PERMANENT_OFFLINE).get();
     }
 
     @Test

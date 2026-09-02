@@ -23,8 +23,10 @@ import org.apache.fluss.client.table.scanner.ScanRecord;
 import org.apache.fluss.client.table.writer.AppendWriter;
 import org.apache.fluss.client.table.writer.UpsertWriter;
 import org.apache.fluss.client.write.HashBucketAssigner;
+import org.apache.fluss.flink.lake.split.LakeSnapshotAndFlussLogSplit;
 import org.apache.fluss.flink.source.metrics.FlinkSourceReaderMetrics;
 import org.apache.fluss.flink.source.split.HybridSnapshotLogSplit;
+import org.apache.fluss.flink.source.split.KvBatchSplit;
 import org.apache.fluss.flink.source.split.LogSplit;
 import org.apache.fluss.flink.source.split.SourceSplitBase;
 import org.apache.fluss.flink.utils.FlinkTestBase;
@@ -308,6 +310,35 @@ class FlinkSourceSplitReaderTest extends FlinkTestBase {
     }
 
     @Test
+    void testHandleKvBatchSplitChangesAndFetch() throws Exception {
+        TablePath tablePath = TablePath.of(DEFAULT_DB, "test-kv-batch-split-table");
+        long tableId = createTable(tablePath, DEFAULT_PK_TABLE_DESCRIPTOR);
+        try (FlinkSourceSplitReader splitReader =
+                createSplitReader(tablePath, DEFAULT_PK_TABLE_SCHEMA.getRowType())) {
+            Map<TableBucket, List<InternalRow>> rows = putRows(tableId, tablePath, 10);
+
+            List<SourceSplitBase> splits = new ArrayList<>();
+            for (TableBucket bucket : rows.keySet()) {
+                splits.add(new KvBatchSplit(bucket, null));
+            }
+
+            Map<String, List<RecordAndPos>> expectedRecords = new HashMap<>();
+            for (Map.Entry<TableBucket, List<InternalRow>> e : rows.entrySet()) {
+                String splitId = new KvBatchSplit(e.getKey(), null).splitId();
+                List<RecordAndPos> records = new ArrayList<>(e.getValue().size());
+                int pos = 1;
+                for (InternalRow row : e.getValue()) {
+                    records.add(new RecordAndPos(new ScanRecord(row), pos++));
+                }
+                expectedRecords.put(splitId, records);
+            }
+
+            assignSplitsAndFetchUntilRetrieveRecords(
+                    splitReader, splits, expectedRecords, DEFAULT_PK_TABLE_SCHEMA.getRowType());
+        }
+    }
+
+    @Test
     void testNoSubscribedBucket() throws Exception {
         TablePath tablePath = TablePath.of(DEFAULT_DB, "test-no-subscribe-bucket-table");
         Schema schema =
@@ -340,10 +371,10 @@ class FlinkSourceSplitReaderTest extends FlinkTestBase {
                         tablePath,
                         TableDescriptor.builder().schema(schema).distributedBy(3).build());
 
-        // create two empty splits with log start offset equal to end offset
+        // create empty splits, including a split starting from EARLIEST_OFFSET
         LogSplit split1 = new LogSplit(new TableBucket(tableId, 0), null, 0, 0);
         LogSplit split2 = new LogSplit(new TableBucket(tableId, 1), null, 0, 0);
-        LogSplit split3 = new LogSplit(new TableBucket(tableId, 2), null, EARLIEST_OFFSET);
+        LogSplit split3 = new LogSplit(new TableBucket(tableId, 2), null, EARLIEST_OFFSET, 0);
         List<SourceSplitBase> subscribeSplits = Arrays.asList(split1, split2, split3);
 
         try (FlinkSourceSplitReader splitReader =
@@ -352,9 +383,10 @@ class FlinkSourceSplitReaderTest extends FlinkTestBase {
 
             // fetch records
             RecordsWithSplitIds<RecordAndPos> records = splitReader.fetch();
-            // finished splits should be split1,split2
+            // all empty splits should finish without subscribing to the log
             assertThat(records.finishedSplits())
-                    .containsExactlyInAnyOrder(split1.splitId(), split2.splitId());
+                    .containsExactlyInAnyOrder(
+                            split1.splitId(), split2.splitId(), split3.splitId());
         }
     }
 
@@ -371,6 +403,21 @@ class FlinkSourceSplitReaderTest extends FlinkTestBase {
         assignSplits(reader, splits);
 
         Map<String, List<RecordAndPos>> splitConsumedRecords = new HashMap<>();
+        Set<String> expectedSnapshotPhaseFinishedSplits = new HashSet<>();
+        for (SourceSplitBase split : splits) {
+            boolean isUnfinishedStreamingHybridSplit =
+                    split.isHybridSnapshotLogSplit()
+                            && !split.asHybridSnapshotLogSplit().isBatch()
+                            && !split.asHybridSnapshotLogSplit().isSnapshotFinished();
+            boolean isUnfinishedStreamingLakeSplit =
+                    split instanceof LakeSnapshotAndFlussLogSplit
+                            && ((LakeSnapshotAndFlussLogSplit) split).isStreaming()
+                            && !((LakeSnapshotAndFlussLogSplit) split).isLakeSplitFinished();
+            if (isUnfinishedStreamingHybridSplit || isUnfinishedStreamingLakeSplit) {
+                expectedSnapshotPhaseFinishedSplits.add(split.splitId());
+            }
+        }
+        Set<String> snapshotPhaseFinishedSplits = new HashSet<>();
         Set<String> finishedSplits = new HashSet<>();
 
         while (finishedSplits.size() < splits.size()) {
@@ -381,7 +428,16 @@ class FlinkSourceSplitReaderTest extends FlinkTestBase {
                 List<RecordAndPos> splitFetch = new ArrayList<>();
                 RecordAndPos record;
                 while ((record = recordsBySplitIds.nextRecordFromSplit()) != null) {
-                    splitFetch.add(new RecordAndPos(record.record(), record.readRecordsCount()));
+                    if (record.isSnapshotPhaseFinished()) {
+                        assertThat(record.record()).isNull();
+                        assertThat(expectedSnapshotPhaseFinishedSplits).contains(splitId);
+                        assertThat(snapshotPhaseFinishedSplits.add(splitId))
+                                .as("only one snapshot phase finished marker per split")
+                                .isTrue();
+                    } else {
+                        splitFetch.add(
+                                new RecordAndPos(record.record(), record.readRecordsCount()));
+                    }
                 }
 
                 splitConsumedRecords
@@ -391,13 +447,18 @@ class FlinkSourceSplitReaderTest extends FlinkTestBase {
                 // if records retrieved from this split is greater or equal to expected records,
                 // it means we should stop read
                 if (splitConsumedRecords.getOrDefault(splitId, Collections.emptyList()).size()
-                        >= expectedRecords.get(splitId).size()) {
+                                >= expectedRecords.get(splitId).size()
+                        && (!expectedSnapshotPhaseFinishedSplits.contains(splitId)
+                                || snapshotPhaseFinishedSplits.contains(splitId))) {
                     finishedSplits.add(splitId);
                 }
                 splitId = recordsBySplitIds.nextSplit();
             }
             recordsBySplitIds.recycle();
         }
+
+        assertThat(snapshotPhaseFinishedSplits)
+                .containsExactlyInAnyOrderElementsOf(expectedSnapshotPhaseFinishedSplits);
 
         // now, verify the records consumed from each split.
         verifyConsumedRecords(splitConsumedRecords, expectedRecords, rowType);
@@ -476,7 +537,9 @@ class FlinkSourceSplitReaderTest extends FlinkTestBase {
 
     private static String toHybridSnapshotLogSplitId(TableBucket tableBucket) {
         // snapshotId and logOffset doesn't affect splitId, use mocked 0 value.
-        return new HybridSnapshotLogSplit(tableBucket, null, 0, 0).splitId();
+        return new HybridSnapshotLogSplit(
+                        tableBucket, null, 0, 0, false, 0, LogSplit.NO_STOPPING_OFFSET, false)
+                .splitId();
     }
 
     private static int getBucketId(InternalRow row) {
@@ -499,7 +562,14 @@ class FlinkSourceSplitReaderTest extends FlinkTestBase {
             if (snapshotId.isPresent() && logOffset.isPresent()) {
                 hybridSnapshotLogSplits.add(
                         new HybridSnapshotLogSplit(
-                                tableBucket, null, snapshotId.getAsLong(), logOffset.getAsLong()));
+                                tableBucket,
+                                null,
+                                snapshotId.getAsLong(),
+                                0,
+                                false,
+                                logOffset.getAsLong(),
+                                LogSplit.NO_STOPPING_OFFSET,
+                                false));
             }
         }
         return hybridSnapshotLogSplits;
